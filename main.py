@@ -1,42 +1,46 @@
 import os
 from flask import Flask, request
-from pybale import BaleBot
+import requests
 
 app = Flask(__name__)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-ADMIN_ID = os.getenv("ADMIN_ID", "")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = os.getenv("ADMIN_ID")
+API_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 
-bot = BaleBot(token=BOT_TOKEN)
-
-@bot.on_start
-def welcome(chat_id, message):
-    bot.send_message(chat_id, "سلام! به ربات پترو پژوهان پرسیس خوش آمدید.")
-
-@bot.on_message
-def handle(chat_id, message_text):
-    text = message_text.strip()
-    if "دوره" in text or "لیست" in text:
-        bot.send_message(chat_id, "📚 دوره‌ها:\nPetrel, Geolog, Eclipse, Landmark, Saphir")
-    elif "قیمت" in text:
-        bot.send_message(chat_id, "💰 قیمت‌ها:\nPetrel:2.2M, Geolog:4.2M, Eclipse:2.1M, Landmark:1.5M, Saphir:1.2M")
-    elif "آنلاین" in text:
-        bot.send_message(chat_id, "دوره‌های آنلاین ویدئویی هستند. ثبت‌نام: https://petropersis.ir/order")
-    elif "آفلاین" in text or "پک" in text:
-        bot.send_message(chat_id, "پک آفلاین شامل فلش و مدارک است. ثبت‌نام: https://petropersis.ir/order")
-    elif "ثبت" in text:
-        bot.send_message(chat_id, "برای ثبت‌نام در سایت وارد شوید:\nhttps://petropersis.ir/order")
-        if ADMIN_ID:
-            bot.send_message(int(ADMIN_ID), f"📩 کاربر #{chat_id} درخواست ثبت‌نام داد.")
-    else:
-        bot.send_message(chat_id, "لطفاً بنویسید: دوره، قیمت، آنلاین، آفلاین یا ثبت")
+def send_message(chat_id, text):
+    url = f"{API_URL}/sendMessage"
+    data = {"chat_id": chat_id, "text": text}
+    requests.post(url, json=data)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    update = request.get_json()
-    bot.process_update(update)
-    return "OK", 200
+    data = request.get_json()
+    message = data.get("message", {})
+    text = message.get("text", "")
+    chat_id = message.get("chat", {}).get("id")
+
+    if not chat_id or not text:
+        return "ignored", 200
+
+    if "سلام" in text or "/start" in text:
+        send_message(chat_id, "سلام! خوش آمدید به ربات پترو پژوهان پرسیس.")
+    elif "دوره" in text:
+        send_message(chat_id, "📚 دوره‌ها:\nPetrel, Geolog, Eclipse, Landmark, Saphir")
+    elif "قیمت" in text:
+        send_message(chat_id, "💰 قیمت‌ها:\nPetrel: 2.2M\nGeolog: 4.2M\nEclipse: 2.1M\nLandmark: 1.5M\nSaphir: 1.2M")
+    elif "ثبت" in text:
+        send_message(chat_id, "برای ثبت‌نام وارد سایت شوید:\nhttps://petropersis.ir/order")
+        if ADMIN_ID:
+            send_message(ADMIN_ID, f"📥 کاربر {chat_id} درخواست ثبت‌نام داد.")
+    else:
+        send_message(chat_id, "دستور را متوجه نشدم. لطفاً بپرسید: دوره، قیمت، ثبت‌نام...")
+
+    return "ok", 200
 
 if __name__ == "__main__":
-    bot.set_webhook(os.getenv("WEBHOOK_URL", ""))
+    # تنظیم webhook فقط یک‌بار، نه در اجرای عادی
+    webhook_url = os.getenv("WEBHOOK_URL")
+    if webhook_url:
+        requests.post(f"{API_URL}/setWebhook", json={"url": webhook_url})
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
